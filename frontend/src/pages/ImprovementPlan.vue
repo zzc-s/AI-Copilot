@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import client, { pollTask } from "../api/client";
 import { useCopilotStore } from "../stores/copilot";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -28,6 +28,22 @@ function fmtDate(iso) {
     return String(iso);
   }
 }
+
+const loadLatestPlan = async () => {
+  if (!store.planEmail?.trim()) return;
+  try {
+    const { data } = await client.get("/plan/latest", {
+      params: { user_email: store.planEmail.trim() }
+    });
+    store.lastPlan = data;
+  } catch {
+    /* 尚无计划 */
+  }
+};
+
+onMounted(() => {
+  if (!store.lastPlan && store.sessionId) loadLatestPlan();
+});
 
 const generate = async () => {
   if (!store.sessionId) return;

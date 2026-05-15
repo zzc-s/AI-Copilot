@@ -40,6 +40,10 @@ function goPlan() {
   router.push("/plan");
 }
 
+function goHistory() {
+  router.push("/history");
+}
+
 function scrollFeatures() {
   document.getElementById("features")?.scrollIntoView({ behavior: "smooth" });
 }
@@ -58,6 +62,7 @@ function scrollFeatures() {
       <div class="hero__actions">
         <el-button type="primary" size="large" round @click="goJd">开始解析 JD</el-button>
         <el-button size="large" round @click="scrollFeatures">了解能力模块</el-button>
+        <el-button size="large" round @click="goHistory">我的记录</el-button>
       </div>
       <div v-if="hasJd || hasSession" class="hero__resume card-soft">
         <span class="hero__resume-label">继续上次</span>

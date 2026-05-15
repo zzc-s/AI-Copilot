@@ -142,6 +142,12 @@ const resetAll = async () => {
 
         </el-menu-item>
 
+        <el-menu-item index="/history">
+
+          我的记录
+
+        </el-menu-item>
+
       </el-menu>
 
     </el-header>

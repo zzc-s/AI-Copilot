@@ -83,10 +83,37 @@ class ResumeMatchHistoryItem(BaseModel):
     report_id: UUID
     match_score: float
     created_at: datetime
+    jd_id: UUID | None = None
+    company: str | None = None
+    role: str | None = None
 
 
 class ResumeMatchHistoryResponse(BaseModel):
     items: list[ResumeMatchHistoryItem]
+
+
+class InterviewHistoryItem(BaseModel):
+    session_id: UUID
+    jd_id: UUID
+    status: str
+    overall_score: float | None
+    created_at: datetime
+    company: str | None = None
+    role: str | None = None
+
+
+class PlanHistoryItem(BaseModel):
+    plan_id: UUID
+    session_id: UUID
+    start_date: datetime
+    created_at: datetime
+
+
+class UserHistoryResponse(BaseModel):
+    user_email: str
+    match_reports: list[ResumeMatchHistoryItem]
+    interview_sessions: list[InterviewHistoryItem]
+    plans: list[PlanHistoryItem]
 
 
 class LatestPlanResponse(BaseModel):

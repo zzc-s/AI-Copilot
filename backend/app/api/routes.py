@@ -9,24 +9,27 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.entities import ImprovementPlan, LlmLog, ResumeMatchReport
+from app.models.entities import ImprovementPlan, InterviewSession, JobDescription, LlmLog, ResumeMatchReport
 from app.repositories.copilot_repo import get_or_create_user, get_session, session_scores
 from app.schemas.copilot import (
     InterviewAnswerRequest,
     InterviewAnswerResponse,
     InterviewQuestionOut,
     InterviewReportResponse,
+    InterviewHistoryItem,
     InterviewSessionCreateRequest,
     InterviewSessionCreateResponse,
     JDParseRequest,
     JDParseResponse,
     LatestPlanResponse,
+    PlanHistoryItem,
     PlanGenerateRequest,
     PlanGenerateResponse,
     ResumeMatchHistoryItem,
     ResumeMatchHistoryResponse,
     ResumeMatchRequest,
     ResumeMatchResponse,
+    UserHistoryResponse,
 )
 from app.services.cache import SimpleTTLCache
 from app.services.celery_health import broker_available
@@ -296,11 +299,78 @@ def create_plan(
     return PlanGenerateResponse(plan_id=UUID(out["plan_id"]), start_date=out["start_date"], plan=out["plan"])
 
 
+def _history_user(db: Session, user_email: str):
+    return get_or_create_user(db, user_email, user_email.split("@")[0])
+
+
+def _match_history_items(db: Session, user_id) -> list[ResumeMatchHistoryItem]:
+    rows = db.execute(
+        select(ResumeMatchReport, JobDescription)
+        .join(JobDescription, ResumeMatchReport.jd_id == JobDescription.id)
+        .where(ResumeMatchReport.user_id == user_id)
+        .order_by(desc(ResumeMatchReport.created_at))
+        .limit(20)
+    ).all()
+    return [
+        ResumeMatchHistoryItem(
+            report_id=r.id,
+            match_score=r.match_score,
+            created_at=r.created_at,
+            jd_id=r.jd_id,
+            company=jd.company,
+            role=jd.role,
+        )
+        for r, jd in rows
+    ]
+
+
 @router.get("/resume/match/history", response_model=ResumeMatchHistoryResponse)
 def resume_match_history(user_email: str, db: Session = Depends(get_db)) -> ResumeMatchHistoryResponse:
-    user = get_or_create_user(db, user_email, user_email.split("@")[0])
-    rows = db.scalars(select(ResumeMatchReport).where(ResumeMatchReport.user_id == user.id).order_by(desc(ResumeMatchReport.created_at)).limit(20)).all()
-    return ResumeMatchHistoryResponse(items=[ResumeMatchHistoryItem(report_id=r.id, match_score=r.match_score, created_at=r.created_at) for r in rows])
+    user = _history_user(db, user_email)
+    return ResumeMatchHistoryResponse(items=_match_history_items(db, user.id))
+
+
+@router.get("/user/history", response_model=UserHistoryResponse)
+def user_history(user_email: str, db: Session = Depends(get_db)) -> UserHistoryResponse:
+    user = _history_user(db, user_email)
+    interview_rows = db.execute(
+        select(InterviewSession, JobDescription)
+        .join(JobDescription, InterviewSession.jd_id == JobDescription.id)
+        .where(InterviewSession.user_id == user.id)
+        .order_by(desc(InterviewSession.created_at))
+        .limit(20)
+    ).all()
+    plan_rows = db.scalars(
+        select(ImprovementPlan)
+        .where(ImprovementPlan.user_id == user.id)
+        .order_by(desc(ImprovementPlan.created_at))
+        .limit(20)
+    ).all()
+    return UserHistoryResponse(
+        user_email=user_email,
+        match_reports=_match_history_items(db, user.id),
+        interview_sessions=[
+            InterviewHistoryItem(
+                session_id=s.id,
+                jd_id=s.jd_id,
+                status=s.status,
+                overall_score=s.overall_score,
+                created_at=s.created_at,
+                company=jd.company,
+                role=jd.role,
+            )
+            for s, jd in interview_rows
+        ],
+        plans=[
+            PlanHistoryItem(
+                plan_id=p.id,
+                session_id=p.session_id,
+                start_date=p.start_date,
+                created_at=p.created_at,
+            )
+            for p in plan_rows
+        ],
+    )
 
 
 @router.get("/plan/latest", response_model=LatestPlanResponse)

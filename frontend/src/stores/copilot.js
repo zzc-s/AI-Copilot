@@ -7,15 +7,20 @@ const defaultJdForm = () => ({
   raw_text: ""
 });
 
+const PROFILE_EMAIL_KEY = "copilot_user_email";
+
+const loadProfileEmail = () =>
+  localStorage.getItem(PROFILE_EMAIL_KEY) || "student@example.com";
+
 const defaultResumeForm = () => ({
-  user_email: "student@example.com",
+  user_email: loadProfileEmail(),
   user_name: "student",
   resume_title: "我的简历",
   resume_text: ""
 });
 
 const defaultInterviewProfile = () => ({
-  user_email: "student@example.com",
+  user_email: loadProfileEmail(),
   user_name: "student"
 });
 
@@ -32,9 +37,17 @@ export const useCopilotStore = defineStore("copilot", {
     interviewProfile: defaultInterviewProfile(),
     interviewAnswers: {},
     interviewReport: null,
-    planEmail: "student@example.com"
+    planEmail: loadProfileEmail()
   }),
   actions: {
+    setProfileEmail(email) {
+      const e = (email || "").trim();
+      if (!e) return;
+      localStorage.setItem(PROFILE_EMAIL_KEY, e);
+      this.resumeForm.user_email = e;
+      this.interviewProfile.user_email = e;
+      this.planEmail = e;
+    },
     resetJdPage() {
       this.jdForm = defaultJdForm();
       this.jdParsed = null;
