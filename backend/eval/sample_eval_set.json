@@ -1,0 +1,14 @@
+[
+  {
+    "name": "backend_python_jd",
+    "jd_text": "岗位要求: 熟悉 Python, SQL, FastAPI, 良好沟通能力",
+    "resume_text": "我使用 Python 和 FastAPI 开发过校园系统，参与数据库优化。",
+    "expected_keywords": ["Python", "FastAPI", "SQL"]
+  },
+  {
+    "name": "ml_jd",
+    "jd_text": "岗位要求: 算法基础, 机器学习, 数据分析",
+    "resume_text": "我做过推荐系统和特征工程，有机器学习实践。",
+    "expected_keywords": ["算法", "机器学习"]
+  }
+]

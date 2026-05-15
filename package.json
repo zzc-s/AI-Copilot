@@ -1,0 +1,23 @@
+{
+  "name": "job-ai-copilot",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n api,worker,web -c cyan,yellow,magenta \"npm run dev:api\" \"npm run dev:worker\" \"npm run dev:web\"",
+    "dev:all": "concurrently -k -n api,worker,web -c cyan,yellow,magenta \"npm run dev:api\" \"npm run dev:worker\" \"npm run dev:web\"",
+    "dev:api": "run-script-os",
+    "dev:api:win32": "cd backend && .venv\\Scripts\\python.exe -m uvicorn app.main:app --reload",
+    "dev:api:darwin": "cd backend && .venv/bin/uvicorn app.main:app --reload",
+    "dev:api:linux": "cd backend && .venv/bin/uvicorn app.main:app --reload",
+    "dev:api:default": "cd backend && .venv/bin/uvicorn app.main:app --reload",
+    "dev:worker": "run-script-os",
+    "dev:worker:win32": "cd backend && .venv\\Scripts\\python.exe -m celery -A app.tasks.celery_app worker -l info --pool=solo",
+    "dev:worker:darwin": "cd backend && .venv/bin/python -m celery -A app.tasks.celery_app worker -l info",
+    "dev:worker:linux": "cd backend && .venv/bin/python -m celery -A app.tasks.celery_app worker -l info",
+    "dev:worker:default": "cd backend && .venv/bin/python -m celery -A app.tasks.celery_app worker -l info",
+    "dev:web": "cd frontend && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "run-script-os": "^1.1.6"
+  }
+}

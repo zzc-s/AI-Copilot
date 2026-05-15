@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: job-ai-copilot-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: job_copilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: job-ai-copilot-redis
+    ports:
+      - "6379:6379"
+
+  api:
+    build: ./backend
+    container_name: job-ai-copilot-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/job_copilot
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build: ./backend
+    container_name: job-ai-copilot-worker
+    command: celery -A app.tasks.celery_app worker -l info
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres:5432/job_copilot
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  postgres_data:
