@@ -4,7 +4,7 @@ from uuid import UUID
 
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from sqlalchemy import desc, func, select
+from sqlalchemy import String, cast, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -17,6 +17,9 @@ from app.schemas.copilot import (
     InterviewQuestionOut,
     InterviewReportResponse,
     InterviewHistoryItem,
+    PaginatedInterviewHistory,
+    PaginatedPlanHistory,
+    PaginatedResumeMatchHistory,
     InterviewSessionCreateRequest,
     InterviewSessionCreateResponse,
     JDParseRequest,
@@ -308,13 +311,191 @@ def _history_user(db: Session, user_email: str):
     return get_or_create_user(db, user_email, user_email.split("@")[0])
 
 
-def _match_history_items(db: Session, user_id) -> list[ResumeMatchHistoryItem]:
+def _clamp_pagination(page: int, page_size: int) -> tuple[int, int]:
+    page = max(1, page)
+    page_size = max(1, min(50, page_size))
+    return page, page_size
+
+
+def _keyword_ilike(keyword: str | None, *columns):
+    if not keyword or not keyword.strip():
+        return None
+    pattern = f"%{keyword.strip()}%"
+    return or_(*[col.ilike(pattern) for col in columns])
+
+
+@router.get(
+    "/user/history/matches",
+    response_model=PaginatedResumeMatchHistory,
+    tags=["用户"],
+    summary="简历匹配历史（分页）",
+)
+def user_history_matches(
+    user_email: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    keyword: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> PaginatedResumeMatchHistory:
+    user = _history_user(db, user_email)
+    page, page_size = _clamp_pagination(page, page_size)
+    base = (
+        select(ResumeMatchReport, JobDescription)
+        .join(JobDescription, ResumeMatchReport.jd_id == JobDescription.id)
+        .where(ResumeMatchReport.user_id == user.id)
+    )
+    kw_filter = _keyword_ilike(keyword, JobDescription.company, JobDescription.role)
+    if kw_filter is not None:
+        base = base.where(kw_filter)
+    count_q = (
+        select(func.count(ResumeMatchReport.id))
+        .select_from(ResumeMatchReport)
+        .join(JobDescription, ResumeMatchReport.jd_id == JobDescription.id)
+        .where(ResumeMatchReport.user_id == user.id)
+    )
+    if kw_filter is not None:
+        count_q = count_q.where(kw_filter)
+    total = db.scalar(count_q) or 0
+    rows = db.execute(
+        base.order_by(desc(ResumeMatchReport.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    items = [
+        ResumeMatchHistoryItem(
+            report_id=r.id,
+            match_score=r.match_score,
+            created_at=r.created_at,
+            jd_id=r.jd_id,
+            company=jd.company,
+            role=jd.role,
+        )
+        for r, jd in rows
+    ]
+    return PaginatedResumeMatchHistory(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get(
+    "/user/history/interviews",
+    response_model=PaginatedInterviewHistory,
+    tags=["用户"],
+    summary="模拟面试历史（分页）",
+)
+def user_history_interviews(
+    user_email: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    keyword: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> PaginatedInterviewHistory:
+    user = _history_user(db, user_email)
+    page, page_size = _clamp_pagination(page, page_size)
+    base = (
+        select(InterviewSession, JobDescription)
+        .join(JobDescription, InterviewSession.jd_id == JobDescription.id)
+        .where(InterviewSession.user_id == user.id)
+    )
+    kw_filter = _keyword_ilike(
+        keyword, JobDescription.company, JobDescription.role, InterviewSession.status
+    )
+    if kw_filter is not None:
+        base = base.where(kw_filter)
+    count_q = (
+        select(func.count(InterviewSession.id))
+        .select_from(InterviewSession)
+        .join(JobDescription, InterviewSession.jd_id == JobDescription.id)
+        .where(InterviewSession.user_id == user.id)
+    )
+    if kw_filter is not None:
+        count_q = count_q.where(kw_filter)
+    total = db.scalar(count_q) or 0
+    rows = db.execute(
+        base.order_by(desc(InterviewSession.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    items = [
+        InterviewHistoryItem(
+            session_id=s.id,
+            jd_id=s.jd_id,
+            status=s.status,
+            overall_score=s.overall_score,
+            created_at=s.created_at,
+            company=jd.company,
+            role=jd.role,
+        )
+        for s, jd in rows
+    ]
+    return PaginatedInterviewHistory(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get(
+    "/user/history/plans",
+    response_model=PaginatedPlanHistory,
+    tags=["用户"],
+    summary="训练计划历史（分页）",
+)
+def user_history_plans(
+    user_email: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    keyword: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> PaginatedPlanHistory:
+    user = _history_user(db, user_email)
+    page, page_size = _clamp_pagination(page, page_size)
+    base = (
+        select(ImprovementPlan, InterviewSession, JobDescription)
+        .join(InterviewSession, ImprovementPlan.session_id == InterviewSession.id)
+        .join(JobDescription, InterviewSession.jd_id == JobDescription.id)
+        .where(ImprovementPlan.user_id == user.id)
+    )
+    plan_kw = None
+    if keyword and keyword.strip():
+        pattern = f"%{keyword.strip()}%"
+        plan_kw = or_(
+            JobDescription.company.ilike(pattern),
+            JobDescription.role.ilike(pattern),
+            cast(ImprovementPlan.id, String).ilike(pattern),
+            cast(ImprovementPlan.session_id, String).ilike(pattern),
+        )
+        base = base.where(plan_kw)
+    count_q = (
+        select(func.count(ImprovementPlan.id))
+        .select_from(ImprovementPlan)
+        .join(InterviewSession, ImprovementPlan.session_id == InterviewSession.id)
+        .join(JobDescription, InterviewSession.jd_id == JobDescription.id)
+        .where(ImprovementPlan.user_id == user.id)
+    )
+    if plan_kw is not None:
+        count_q = count_q.where(plan_kw)
+    total = db.scalar(count_q) or 0
+    rows = db.execute(
+        base.order_by(desc(ImprovementPlan.created_at))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    items = [
+        PlanHistoryItem(
+            plan_id=p.id,
+            session_id=p.session_id,
+            start_date=p.start_date,
+            created_at=p.created_at,
+            company=jd.company,
+            role=jd.role,
+        )
+        for p, _s, jd in rows
+    ]
+    return PaginatedPlanHistory(items=items, total=total, page=page, page_size=page_size)
+
+
+def _match_history_items(db: Session, user_id, limit: int = 20) -> list[ResumeMatchHistoryItem]:
     rows = db.execute(
         select(ResumeMatchReport, JobDescription)
         .join(JobDescription, ResumeMatchReport.jd_id == JobDescription.id)
         .where(ResumeMatchReport.user_id == user_id)
         .order_by(desc(ResumeMatchReport.created_at))
-        .limit(20)
+        .limit(limit)
     ).all()
     return [
         ResumeMatchHistoryItem(
@@ -347,44 +528,16 @@ def resume_match_history(user_email: str, db: Session = Depends(get_db)) -> Resu
     summary="用户历史汇总",
 )
 def user_history(user_email: str, db: Session = Depends(get_db)) -> UserHistoryResponse:
+    """兼容旧接口：各块最多返回 20 条，无分页。前端请优先使用 /user/history/* 分页接口。"""
     user = _history_user(db, user_email)
-    interview_rows = db.execute(
-        select(InterviewSession, JobDescription)
-        .join(JobDescription, InterviewSession.jd_id == JobDescription.id)
-        .where(InterviewSession.user_id == user.id)
-        .order_by(desc(InterviewSession.created_at))
-        .limit(20)
-    ).all()
-    plan_rows = db.scalars(
-        select(ImprovementPlan)
-        .where(ImprovementPlan.user_id == user.id)
-        .order_by(desc(ImprovementPlan.created_at))
-        .limit(20)
-    ).all()
+    match_page = user_history_matches(user_email, 1, 20, None, db)
+    interview_page = user_history_interviews(user_email, 1, 20, None, db)
+    plan_page = user_history_plans(user_email, 1, 20, None, db)
     return UserHistoryResponse(
         user_email=user_email,
-        match_reports=_match_history_items(db, user.id),
-        interview_sessions=[
-            InterviewHistoryItem(
-                session_id=s.id,
-                jd_id=s.jd_id,
-                status=s.status,
-                overall_score=s.overall_score,
-                created_at=s.created_at,
-                company=jd.company,
-                role=jd.role,
-            )
-            for s, jd in interview_rows
-        ],
-        plans=[
-            PlanHistoryItem(
-                plan_id=p.id,
-                session_id=p.session_id,
-                start_date=p.start_date,
-                created_at=p.created_at,
-            )
-            for p in plan_rows
-        ],
+        match_reports=match_page.items,
+        interview_sessions=interview_page.items,
+        plans=plan_page.items,
     )
 
 

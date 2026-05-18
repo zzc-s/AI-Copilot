@@ -12,7 +12,7 @@
 | 2 | 简历匹配 | 匹配分、差距分析、改写建议 |
 | 3 | 模拟面试 | 文本/语音作答，生成评分与总结 |
 | 4 | 训练计划 | 基于面试结果生成 7 天计划 |
-| — | [我的记录](/history) | 按邮箱查看匹配、面试、计划历史 |
+| — | [我的记录](/history) | 按邮箱查看匹配、面试、计划历史；支持关键字模糊搜索与分页（详见 [我的记录](#我的记录)） |
 
 **访问地址**（`npm run dev` 后）：
 
@@ -20,7 +20,7 @@
 
 **演示说明**：当前为 MVP，**无登录**；各页填写**同一邮箱**即可在「我的记录」聚合数据。
 
-**技术亮点**：FastAPI + Celery 异步 · Vue3 · Docker（PostgreSQL/Redis）· Knife4j/Scalar API 文档 · 规则引擎 + LLM 可降级 Mock · 语音 ASR + ffmpeg · `/llm/stats` 可观测。
+**技术亮点**：FastAPI + Celery 异步 · Vue3 · Docker（PostgreSQL/Redis）· Knife4j/Scalar API 文档 · 规则引擎 + LLM 可降级 Mock · 语音 ASR + ffmpeg · 历史分页 + 模糊搜索 · `/llm/stats` 可观测。
 
 ---
 
@@ -29,6 +29,7 @@
 - [环境要求](#环境要求)
 - [首次安装](#首次安装)
 - [日常启动](#日常启动)
+- [我的记录](#我的记录)
 - [API 文档（Knife4j / Scalar）](#api-文档knife4j--scalar)
 - [PyCharm](#pycharm)
 - [配置与密钥](#配置与密钥)
@@ -87,6 +88,72 @@ powershell -ExecutionPolicy Bypass -File backend\scripts\fetch_knife4j_ui.ps1
    - API 文档（推荐）：http://127.0.0.1:8000/doc.html  
 
 停止：**Ctrl+C**；停库：`docker compose down`。
+
+---
+
+## 我的记录
+
+按邮箱聚合**简历匹配**、**模拟面试**、**训练计划**三块历史，支持 PostgreSQL 模糊搜索与分页。页面路由：`/history`（顶栏「我的记录」），实现见 `frontend/src/pages/History.vue`。
+
+### 页面交互
+
+| 模块 | 搜索范围（`ILIKE`） | 默认每页 |
+|------|---------------------|----------|
+| 简历匹配 | 公司、岗位 | 10 |
+| 模拟面试 | 公司、岗位、状态 | 10 |
+| 训练计划 | 公司、岗位、计划 ID、会话 ID（JOIN 面试/JD） | 10 |
+
+- 顶部输入邮箱并点击「查询」后，三块数据**并行**加载，各块 `page` 重置为 1。
+- 各块有**独立**搜索框；输入关键字 **300ms 防抖** 后自动查询，并将该块重置到第 1 页。
+- 翻页或修改每页条数（10 / 20 / 50）时，仅请求**对应块**接口。
+- 卡片标题旁「共 N 条」来自接口字段 `total`，不是当前页 `items` 条数。
+
+### 分页 API
+
+三条接口共用 Query 参数：
+
+| 参数 | 必填 | 默认 | 说明 |
+|------|------|------|------|
+| `user_email` | 是 | — | 用户邮箱 |
+| `page` | 否 | 1 | ≥ 1 |
+| `page_size` | 否 | 10 | 1–50 |
+| `keyword` | 否 | — | 空则不过滤；多字段 OR 模糊匹配 |
+
+| 接口 | 说明 |
+|------|------|
+| `GET /user/history/matches` | 简历匹配历史 |
+| `GET /user/history/interviews` | 模拟面试历史 |
+| `GET /user/history/plans` | 训练计划历史 |
+
+响应体（三块结构相同，`items` 元素类型不同）：
+
+```json
+{
+  "items": [],
+  "total": 15,
+  "page": 1,
+  "page_size": 10
+}
+```
+
+示例：
+
+```
+GET /user/history/matches?user_email=demo@example.com&page=1&page_size=10&keyword=阿里
+```
+
+**兼容接口**：`GET /user/history` 仍返回三块首屏摘要（各块 `page_size=20`）。当前前端以三条分页接口为准。
+
+### 前端中文分页
+
+`frontend/src/main.js` 中为 Element Plus 注册了 `element-plus/es/locale/lang/zh-cn`，分页器显示「共 N 条」「N 条/页」等中文文案，全站 Element Plus 组件同步生效。
+
+### 演示步骤
+
+1. 在 JD 解析、简历匹配、模拟面试、训练计划等页使用**同一邮箱**完成操作。
+2. 打开 http://127.0.0.1:5173/history ，输入该邮箱并点击「查询」。
+3. 在任一块搜索框输入公司名（如「阿里」），确认列表与「共 N 条」随关键字变化。
+4. 翻页或切换每页条数，在浏览器网络面板中确认仅请求对应块的 API，且 `page` / `page_size` 正确。
 
 ---
 
@@ -203,7 +270,10 @@ OpenAPI 规范由 FastAPI 自动生成；在线调试推荐使用 [Knife4j](/doc
 | `POST /jd/parse` | JD | 解析职位描述 |
 | `POST /resume/match` | 简历 | 简历与 JD 匹配 |
 | `GET /resume/match/history` | 用户 | 匹配历史（`user_email`） |
-| `GET /user/history` | 用户 | 匹配 + 面试 + 计划汇总 |
+| `GET /user/history` | 用户 | 匹配 + 面试 + 计划汇总（兼容，各块首屏；详见 [我的记录](#我的记录)） |
+| `GET /user/history/matches` | 用户 | 匹配历史分页（详见 [我的记录](#我的记录)） |
+| `GET /user/history/interviews` | 用户 | 面试历史分页（详见 [我的记录](#我的记录)） |
+| `GET /user/history/plans` | 用户 | 计划历史分页（详见 [我的记录](#我的记录)） |
 | `POST /interview/session` | 面试 | 创建面试会话 |
 | `POST /interview/{id}/answer` | 面试 | 文本作答 |
 | `POST /interview/{id}/answer/audio` | 面试 | 语音作答 |

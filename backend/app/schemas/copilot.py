@@ -1,7 +1,17 @@
 from datetime import datetime
+from typing import Generic, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+T = TypeVar("T")
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    page: int
+    page_size: int
 
 
 class JDParseRequest(BaseModel):
@@ -107,6 +117,13 @@ class PlanHistoryItem(BaseModel):
     session_id: UUID
     start_date: datetime
     created_at: datetime
+    company: str | None = None
+    role: str | None = None
+
+
+PaginatedResumeMatchHistory = PaginatedResponse[ResumeMatchHistoryItem]
+PaginatedInterviewHistory = PaginatedResponse[InterviewHistoryItem]
+PaginatedPlanHistory = PaginatedResponse[PlanHistoryItem]
 
 
 class UserHistoryResponse(BaseModel):
