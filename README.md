@@ -1,6 +1,6 @@
 # 求职 AI Copilot
 
-面向应届生的求职协作系统：**JD 解析 → 简历匹配 → 模拟面试 → 7 天训练计划**，支持 LLM 增强、语音面试与调用可观测。适合作为**求职作品集**本地 MVP 演示。
+面向应届生的求职协作系统：**JD 解析 → 简历匹配 → 模拟面试 → 7 天训练计划**，支持 LLM 增强、语音面试、历史记录与调用可观测。适合作为**求职作品集**本地 MVP 演示。
 
 ---
 
@@ -17,11 +17,10 @@
 **访问地址**（`npm run dev` 后）：
 
 - 前端：http://127.0.0.1:5173  
-- API 文档：http://127.0.0.1:8000/docs  
 
-**演示账号说明**：当前为 MVP，**无登录**；各页填写同一邮箱即可在「我的记录」聚合数据。上线计划：JWT 鉴权。
+**演示说明**：当前为 MVP，**无登录**；各页填写**同一邮箱**即可在「我的记录」聚合数据。
 
-**技术亮点**：FastAPI + Celery 异步 · Vue3 · Docker（PostgreSQL/Redis）· 规则引擎 + LLM 可降级 Mock · 语音 ASR + ffmpeg · `/llm/stats` 可观测。
+**技术亮点**：FastAPI + Celery 异步 · Vue3 · Docker（PostgreSQL/Redis）· Knife4j/Scalar API 文档 · 规则引擎 + LLM 可降级 Mock · 语音 ASR + ffmpeg · `/llm/stats` 可观测。
 
 ---
 
@@ -30,6 +29,7 @@
 - [环境要求](#环境要求)
 - [首次安装](#首次安装)
 - [日常启动](#日常启动)
+- [API 文档（Knife4j / Scalar）](#api-文档knife4j--scalar)
 - [PyCharm](#pycharm)
 - [配置与密钥](#配置与密钥)
 - [常见问题](#常见问题)
@@ -46,7 +46,9 @@
 | Python | 3.12+ | `backend/.venv` |
 | PyCharm | 可选 | 调试后端 |
 
-`npm run dev` 使用 **`backend/.venv`**。若卸载了创建 venv 时的 Python，会报 `No Python at ...Python312...`，见 [虚拟环境失效](#虚拟环境失效)。**`backend/.env` 含密钥，已被 `.gitignore` 忽略，不会随 `git push` 上传**；克隆后请 `copy .env.example .env` 自填。
+`npm run dev` 使用 **`backend/.venv`**。若卸载了创建 venv 时的 Python，会报 `No Python at ...Python312...`，见 [虚拟环境失效](#虚拟环境失效)。
+
+**密钥与 Git**：`backend/.env` 含 API Key，已被 `.gitignore` 忽略，**不会**随 `git push` 上传；克隆后请 `copy .env.example .env` 自填。
 
 验证：`docker --version`、`node --version`、`py -3.12 --version`（新终端、勿 activate 旧 venv）。
 
@@ -69,6 +71,9 @@ npm install
 
 cd ..
 docker compose up -d postgres redis
+
+# Knife4j 文档 UI（首次必做；webjars 未提交 Git，需本机拉取）
+powershell -ExecutionPolicy Bypass -File backend\scripts\fetch_knife4j_ui.ps1
 ```
 
 ---
@@ -77,9 +82,55 @@ docker compose up -d postgres redis
 
 1. 打开 **Docker Desktop**
 2. `docker compose up -d postgres redis`
-3. `npm run dev` → 浏览器打开 http://127.0.0.1:5173
+3. `npm run dev`
+   - 前端：http://127.0.0.1:5173  
+   - API 文档（推荐）：http://127.0.0.1:8000/doc.html  
 
 停止：**Ctrl+C**；停库：`docker compose down`。
+
+---
+
+## API 文档（Knife4j / Scalar）
+
+本项目为 **FastAPI**，无 Java 版 Knife4j Starter，采用 **挂载 Knife4j 官方静态 UI** + **Scalar 备用** 的方式提供接口文档。
+
+### 访问地址
+
+| 地址 | 说明 |
+|------|------|
+| http://127.0.0.1:8000/doc.html | **Knife4j**（推荐，中文界面、分组清晰） |
+| http://127.0.0.1:8000/scalar | **Scalar** 备用（`scalar-fastapi`，Knife4j 资源缺失时可用） |
+| http://127.0.0.1:8000/docs | FastAPI 自带 Swagger UI |
+| http://127.0.0.1:8000/redoc | ReDoc |
+| http://127.0.0.1:8000/openapi.json | OpenAPI 3 规范 JSON |
+
+### 实现说明
+
+| 项 | 路径 / 说明 |
+|----|-------------|
+| 静态资源 | `backend/app/static/knife4j/`（`doc.html`、`webjars/`、`group.json`） |
+| 拉取脚本 | `backend/scripts/fetch_knife4j_ui.ps1`（从 Maven 下载 `knife4j-openapi3-ui` 4.5.0） |
+| 后端注册 | `backend/app/main.py`：挂载 `/doc.html`、`/webjars`，并提供 `/v3/api-docs/swagger-config` 指向 `/openapi.json` |
+| Python 依赖 | `scalar-fastapi`（见 `backend/requirements.txt`） |
+| 接口分组 | `routes.py` 中为接口配置了中文 `tags` / `summary`（系统、JD、简历、面试、计划、用户、LLM、管理） |
+
+### 首次使用 Knife4j
+
+```powershell
+# 在项目根目录执行（需联网）
+powershell -ExecutionPolicy Bypass -File backend\scripts\fetch_knife4j_ui.ps1
+
+# 重启 API 后访问
+# http://127.0.0.1:8000/doc.html
+```
+
+`webjars/` 体积较大，已在 `.gitignore` 中忽略；**新 clone 仓库后需执行上述脚本**。若 `/doc.html` 空白或样式丢失，多半是未拉取 `webjars`，重新执行脚本即可。
+
+### 在文档里调试接口
+
+- 无需登录；先调 `GET /health` 确认服务正常。
+- 依赖数据库的接口需 Docker 中 Postgres/Redis 已启动。
+- 带 `async=true` 的接口返回 `task_id`，可用 `GET /tasks/{task_id}` 查结果。
 
 ---
 
@@ -88,6 +139,7 @@ docker compose up -d postgres redis
 1. 解释器：`backend\.venv\Scripts\python.exe`
 2. Working directory = `backend`：**uvicorn** `app.main:app --reload`；**celery** `-A app.tasks.celery_app worker -l info --pool=solo`
 3. 先起 Docker，再跑 API/Worker；前端：`cd frontend && npm run dev`
+4. 文档：启动 API 后浏览器打开 http://127.0.0.1:8000/doc.html
 
 ---
 
@@ -123,6 +175,13 @@ py -3.12 -m venv .venv
 
 PyCharm 中重新选择 `backend\.venv\Scripts\python.exe`。
 
+### Knife4j 打不开或页面空白
+
+1. 确认已执行：`backend\scripts\fetch_knife4j_ui.ps1`
+2. 确认存在目录：`backend\app\static\knife4j\webjars\`
+3. 重启 API 后访问 http://127.0.0.1:8000/doc.html
+4. 仍不行时使用备用：http://127.0.0.1:8000/scalar 或 http://127.0.0.1:8000/docs
+
 ### 前端异常
 
 ```powershell
@@ -135,20 +194,25 @@ npm install
 
 ## API 列表
 
-| 接口 | 说明 |
-|------|------|
-| `GET /health` | 健康检查 |
-| `POST /jd/parse` | JD 解析 |
-| `POST /resume/match` | 简历匹配 |
-| `GET /resume/match/history` | 匹配历史（`user_email`） |
-| `GET /user/history` | 匹配 + 面试 + 计划汇总（`user_email`） |
-| `POST /interview/session` | 创建面试 |
-| `GET /interview/{id}/report` | 面试报告 |
-| `POST /plan/generate` | 生成计划 |
-| `GET /plan/latest` | 最新计划 |
-| `GET /llm/stats` | LLM 统计 |
+OpenAPI 规范由 FastAPI 自动生成；在线调试推荐使用 [Knife4j](/doc.html) 页面。
 
-完整文档：http://127.0.0.1:8000/docs
+| 接口 | 分组 | 说明 |
+|------|------|------|
+| `GET /health` | 系统 | 健康检查 |
+| `GET /tasks/{task_id}` | 系统 | 异步任务状态 |
+| `POST /jd/parse` | JD | 解析职位描述 |
+| `POST /resume/match` | 简历 | 简历与 JD 匹配 |
+| `GET /resume/match/history` | 用户 | 匹配历史（`user_email`） |
+| `GET /user/history` | 用户 | 匹配 + 面试 + 计划汇总 |
+| `POST /interview/session` | 面试 | 创建面试会话 |
+| `POST /interview/{id}/answer` | 面试 | 文本作答 |
+| `POST /interview/{id}/answer/audio` | 面试 | 语音作答 |
+| `GET /interview/{id}/report` | 面试 | 面试报告 |
+| `POST /plan/generate` | 计划 | 生成 7 天计划 |
+| `GET /plan/latest` | 计划 | 最新计划 |
+| `GET /llm/logs` | LLM | 调用日志 |
+| `GET /llm/stats` | LLM | 调用统计 |
+| `POST /admin/backfill` | 管理 | 向量回填 |
 
 ---
 

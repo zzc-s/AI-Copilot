@@ -11,3 +11,4 @@ celery==5.4.0
 redis==5.0.8
 openai==1.51.0
 python-multipart==0.0.9
+scalar-fastapi==1.8.2

@@ -67,12 +67,12 @@ def _task_result(async_result: AsyncResult) -> dict:
     return body
 
 
-@router.get("/health")
+@router.get("/health", tags=["系统"], summary="健康检查")
 def health() -> dict:
     return {"status": "ok"}
 
 
-@router.get("/tasks/{task_id}")
+@router.get("/tasks/{task_id}", tags=["系统"], summary="查询异步任务状态")
 def get_task_status(task_id: str) -> dict:
     if task_id.startswith("sync-"):
         hit = get_sync_task_response(task_id)
@@ -82,7 +82,7 @@ def get_task_status(task_id: str) -> dict:
     return _task_result(AsyncResult(task_id, app=celery_app))
 
 
-@router.get("/llm/logs")
+@router.get("/llm/logs", tags=["LLM"], summary="LLM 调用日志列表")
 def llm_logs(limit: int = 50, db: Session = Depends(get_db)) -> list[dict]:
     rows = db.scalars(select(LlmLog).order_by(desc(LlmLog.created_at)).limit(limit)).all()
     return [
@@ -100,7 +100,7 @@ def llm_logs(limit: int = 50, db: Session = Depends(get_db)) -> list[dict]:
     ]
 
 
-@router.get("/llm/stats")
+@router.get("/llm/stats", tags=["LLM"], summary="LLM 调用统计")
 def llm_stats(days: int = 7, db: Session = Depends(get_db)) -> list[dict]:
     since = datetime.now(timezone.utc) - timedelta(days=days)
     stmt = (
@@ -129,7 +129,7 @@ def llm_stats(days: int = 7, db: Session = Depends(get_db)) -> list[dict]:
     return out
 
 
-@router.post("/admin/backfill")
+@router.post("/admin/backfill", tags=["管理"], summary="向量回填")
 def admin_backfill(db: Session = Depends(get_db)) -> dict:
     from app.services.backfill import backfill_jd_embeddings
 
@@ -158,7 +158,7 @@ def parse_job_description(
     return JDParseResponse(jd_id=UUID(out["jd_id"]), parsed=out["parsed"])
 
 
-@router.post("/resume/match")
+@router.post("/resume/match", tags=["简历"], summary="简历与 JD 匹配")
 def match_resume(
     payload: ResumeMatchRequest,
     db: Session = Depends(get_db),
@@ -187,7 +187,7 @@ def match_resume(
     )
 
 
-@router.post("/interview/session")
+@router.post("/interview/session", tags=["面试"], summary="创建面试会话")
 def create_interview_session(
     payload: InterviewSessionCreateRequest,
     db: Session = Depends(get_db),
@@ -227,7 +227,7 @@ def answer_question(
     return InterviewAnswerResponse(answer_id=UUID(out["answer_id"]), score=out["score"], feedback=out["feedback"])
 
 
-@router.post("/interview/{session_id}/answer/audio")
+@router.post("/interview/{session_id}/answer/audio", tags=["面试"], summary="语音作答")
 async def answer_audio(
     session_id: UUID,
     question_id: UUID = Form(...),
@@ -253,7 +253,12 @@ async def answer_audio(
     return {"task_id": tid}
 
 
-@router.get("/interview/{session_id}/report", response_model=InterviewReportResponse)
+@router.get(
+    "/interview/{session_id}/report",
+    response_model=InterviewReportResponse,
+    tags=["面试"],
+    summary="面试报告",
+)
 def report(session_id: UUID, db: Session = Depends(get_db)) -> InterviewReportResponse:
     session = get_session(db, session_id)
     if not session:
@@ -274,7 +279,7 @@ def report(session_id: UUID, db: Session = Depends(get_db)) -> InterviewReportRe
     )
 
 
-@router.post("/plan/generate")
+@router.post("/plan/generate", tags=["计划"], summary="生成训练计划")
 def create_plan(
     payload: PlanGenerateRequest,
     db: Session = Depends(get_db),
@@ -324,13 +329,23 @@ def _match_history_items(db: Session, user_id) -> list[ResumeMatchHistoryItem]:
     ]
 
 
-@router.get("/resume/match/history", response_model=ResumeMatchHistoryResponse)
+@router.get(
+    "/resume/match/history",
+    response_model=ResumeMatchHistoryResponse,
+    tags=["用户"],
+    summary="简历匹配历史",
+)
 def resume_match_history(user_email: str, db: Session = Depends(get_db)) -> ResumeMatchHistoryResponse:
     user = _history_user(db, user_email)
     return ResumeMatchHistoryResponse(items=_match_history_items(db, user.id))
 
 
-@router.get("/user/history", response_model=UserHistoryResponse)
+@router.get(
+    "/user/history",
+    response_model=UserHistoryResponse,
+    tags=["用户"],
+    summary="用户历史汇总",
+)
 def user_history(user_email: str, db: Session = Depends(get_db)) -> UserHistoryResponse:
     user = _history_user(db, user_email)
     interview_rows = db.execute(
@@ -373,7 +388,12 @@ def user_history(user_email: str, db: Session = Depends(get_db)) -> UserHistoryR
     )
 
 
-@router.get("/plan/latest", response_model=LatestPlanResponse)
+@router.get(
+    "/plan/latest",
+    response_model=LatestPlanResponse,
+    tags=["计划"],
+    summary="最新训练计划",
+)
 def latest_plan(user_email: str, db: Session = Depends(get_db)) -> LatestPlanResponse:
     user = get_or_create_user(db, user_email, user_email.split("@")[0])
     row = db.scalar(select(ImprovementPlan).where(ImprovementPlan.user_id == user.id).order_by(desc(ImprovementPlan.created_at)))

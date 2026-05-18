@@ -38,3 +38,8 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Knife4j UI（体积大，clone 后执行 backend/scripts/fetch_knife4j_ui.ps1）
+backend/app/static/knife4j/webjars/
+backend/app/static/knife4j/img/
+backend/app/static/knife4j_tmp/
